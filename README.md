@@ -12,3 +12,4 @@ Here are some dependencies required to build this toolchain:
 
 # Credits
 * [Chimera linux](https://chimera-linux.org) - Majority of patches are sourced from chimera linux.
+* [CMLFS](https://github.com/dslm4515/CMLFS) - Many of the build scripts were taken as reference for the musllvm toolchain itself
