@@ -2,7 +2,7 @@
 set -eu
 
 ARCH=$(uname -m)
-FROOT="$ARCH-musllvm"
+FROOT="./build/$ARCH-musllvm"
 MUSL_TAR=$(ls ./sources/musl-*.tar.* 2>/dev/null | head -n 1 | xargs basename)
 if [ -z "$MUSL_TAR" ]; then
         echo "ERR: No Musl tarball found in sources directory"

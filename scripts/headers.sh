@@ -15,7 +15,7 @@ if command -v "clang" >/dev/null 2>&1 && command -v "lld" >/dev/null 2>&1; then
         export LLVM_IAS=1
 fi
 
-if [ -z ./build/"$LINUX_SOURCE" ]; then
+if [ ! -d ./build/"$LINUX_SOURCE" ]; then
         echo "Extracting Linux tarball to ./build/"
         tar -xpf ./sources/"$LINUX_TAR" -C ./build
 else
@@ -37,7 +37,6 @@ make mrproper
 make headers
 find usr/include -type f ! -name '*.h' -delete
 cp -rv usr/include/* ../"$FROOT"/include/
-rm -v ../"$FROOT"/include/Makefile
 
 exit
 
