@@ -1,9 +1,5 @@
 include config.mk
 
-SOURCES_FILE=./sources.list
-ARCH=$(shell uname -m)
-FROOT="${ARCH}-musllvm"
-
 all:
 
 pull:
@@ -19,6 +15,7 @@ pull:
 
 build: init
 	./scripts/headers.sh	
+	./scripts/musl.sh
 
 init:
 	@if [ ! -d ./build/${FROOT} ]; then \

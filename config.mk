@@ -1,6 +1,5 @@
 # musllvm default flags
 
-CC = cc
-CFLAGS = -O2 -pipe
-
-
+SOURCES_FILE=./sources.list
+ARCH=$(shell uname -m)
+FROOT="${ARCH}-musllvm"
