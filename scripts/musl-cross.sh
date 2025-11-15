@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-ARCH=$(uname -m)
-FROOT="../$ARCH-musllvm" # make install in source dir
+source ./scripts/config.sh
+
 MUSL_TAR=$(ls ./sources/musl-*.tar.* 2>/dev/null | head -n 1 | xargs basename)
 if [ -z "$MUSL_TAR" ]; then
         echo "ERR: No Musl tarball found in sources directory"
@@ -32,4 +32,7 @@ fi
 cd ./build/"$MUSL_SOURCE"
 
 echo "Installing musl headers..."
-DESTDIR=$FROOT make ARCH=$(uname -m) install-headers
+./configure \
+	--prefix=/
+
+DESTDIR=../../$CROSS make ARCH=$(uname -m) install-headers

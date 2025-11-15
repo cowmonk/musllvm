@@ -1,5 +1,15 @@
 # musllvm default flags
+# --------------------------------
+# feel free to change these however you like
+#
 
-SOURCES_FILE=./sources.list
+#
+# these are shared between the Makefile and scripts
+#
 ARCH=$(shell uname -m)
+SOURCES_FILE=./sources.list
 FROOT="${ARCH}-musllvm"
+CROSS="./build/cross" # cross directory
+
+# MAKEFLAGS to parse the amounto of cores used
+MAKEFLAGS="-j$(shell nproc) -l$(shell nproc)"

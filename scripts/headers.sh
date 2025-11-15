@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-ARCH=$(uname -m)
-FROOT="$ARCH-musllvm"
+source ./scripts/config.sh
+
 LINUX_TAR=$(ls ./sources/linux-*.tar.* 2>/dev/null | head -n 1 | xargs basename)
 if [ -z "$LINUX_TAR" ]; then
         echo "ERR: No Linux tarball found in sources directory"
