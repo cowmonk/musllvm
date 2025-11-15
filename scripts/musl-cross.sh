@@ -2,7 +2,7 @@
 set -eu
 
 ARCH=$(uname -m)
-FROOT="./build/$ARCH-musllvm"
+FROOT="../$ARCH-musllvm" # make install in source dir
 MUSL_TAR=$(ls ./sources/musl-*.tar.* 2>/dev/null | head -n 1 | xargs basename)
 if [ -z "$MUSL_TAR" ]; then
         echo "ERR: No Musl tarball found in sources directory"
@@ -23,16 +23,13 @@ else
         echo "Musl source already extracted."
 fi
 
-echo "Buliding musl"
-if [ -f ./build/"$FROOT"/include/libc.so ]; then
-        echo "Musl already built, skipping..."
+echo "Buliding musl headers"
+if [ -f "./build/$MUSL_SOURCE" ]; then
+        echo "Musl headers already built, skipping..."
         exit
 fi
 
 cd ./build/"$MUSL_SOURCE"
 
-./configure \
-        --prefix=/ \
-
-make -j$(nproc)
-DESTDIR=$FROOT make install
+echo "Installing musl headers..."
+DESTDIR=$FROOT make ARCH=$(uname -m) install-headers

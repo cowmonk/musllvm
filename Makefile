@@ -14,8 +14,7 @@ pull:
 	fi
 
 build: init
-	./scripts/headers.sh	
-	./scripts/musl.sh
+	./scripts/musl-cross.sh
 
 init:
 	@if [ ! -d ./build/${FROOT} ]; then \
