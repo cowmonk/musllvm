@@ -1,9 +1,9 @@
 #!/bin/sh
 set -eu
 
-source ./scripts/config.sh
+. $PWD/scripts/config.sh
 
-LINUX_TAR=$(ls ./sources/linux-*.tar.* 2>/dev/null | head -n 1 | xargs basename)
+LINUX_TAR=$(ls "$PROOT"/sources/linux-*.tar.* 2>/dev/null | head -n 1 | xargs basename)
 if [ -z "$LINUX_TAR" ]; then
         echo "ERR: No Linux tarball found in sources directory"
         exit 1
@@ -15,18 +15,18 @@ if command -v "clang" >/dev/null 2>&1 && command -v "lld" >/dev/null 2>&1; then
         export LLVM_IAS=1
 fi
 
-if [ ! -d ./build/"$LINUX_SOURCE" ]; then
+if [ ! -d $PROOT/build/"$LINUX_SOURCE" ]; then
         echo "Extracting Linux tarball to ./build/"
-        tar -xpf ./sources/"$LINUX_TAR" -C ./build
+        tar -xpf $PROOT/sources/"$LINUX_TAR" -C $PROOT/build
 else
         echo "Linux source already extracted."
 fi
 
 echo "Creating target include directory"
-mkdir -pv ./build/"$FROOT"/include
+mkdir -pv $PROOT/build/"$FROOT"/include
 
 echo "Building Headers"
-if [ -d ./build/"$FROOT"/include/linux ]; then
+if [ -d $PROOT/build/"$FROOT"/include/linux ]; then
         echo "Headers already built, skipping..."
         exit
 fi
@@ -36,5 +36,5 @@ cd ./build/"$LINUX_SOURCE"
 make mrproper
 make headers
 find usr/include -type f ! -name '*.h' -delete
-cp -rv usr/include/* ../"$FROOT"/include/
+cp -rv usr/include/* $PROOT/build/"$FROOT"/include/
 

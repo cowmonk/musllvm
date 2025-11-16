@@ -1,9 +1,9 @@
 #!/bin/sh
 set -eu
 
-source ./scripts/config.sh
+. $PWD/scripts/config.sh
 
-ELF_TAR=$(ls ./sources/elftoolchain-*.tar.* 2>/dev/null | head -n 1 | xargs basename)
+ELF_TAR=$(ls "$PROOT"/sources/elftoolchain-*.tar.* 2>/dev/null | head -n 1 | xargs basename)
 if [ -z "$ELF_TAR" ]; then
         echo "ERR: No Musl tarball found in sources directory"
         exit 1
@@ -16,15 +16,15 @@ else
         export CC="cc"
 fi
 
-if [ ! -d ./build/"$ELF_SOURCE" ]; then
+if [ ! -d $PROOT/build/"$ELF_SOURCE" ]; then
         echo "Extracting Elftoolchain tarball to ./build/"
-        tar -xpf ./sources/"$ELF_TAR" -C ./build
+        tar -xpf $PROOT/sources/"$ELF_TAR" -C ./build
 else
         echo "Elftoolchain source already extracted."
 fi
 
 echo "Buliding musl headers"
-if [ -f "./build/$ELF_SOURCE" ]; then
+if [ -f "$PROOT/build/$ELF_SOURCE" ]; then
         echo "ELFTOOLCHAIN  already built, skipping..."
         exit
 fi
@@ -33,7 +33,7 @@ cd ./build/"$ELF_SOURCE"
 
 echo "patching elftoolchain-cross..."
 
-patch -Np1 < ../../patches/elftoolchain/*
+patch -Np1 < "$PROOT"/patches/elftoolchain/*
 
 echo "Installing elftoolchain-cross..."
 

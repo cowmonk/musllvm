@@ -2,6 +2,8 @@ https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.17.7.tar.xz
 https://musl.libc.org/releases/musl-1.2.5.tar.gz
 https://pub.sortix.org/libz/libz-1.2.8.2025.03.07.tar.gz
 https://github.com/chimera-linux/libatomic-chimera/archive/refs/tags/v0.90.0.tar.gz
+https://github.com/Projeto-Pindorama/musl-compat/archive/refs/tags/20251111.tar.gz
+https://github.com/libarchive/libarchive/releases/download/v3.8.2/libarchive-3.8.2.tar.gz
 https://sourceforge.net/projects/elftoolchain/files/Sources/elftoolchain-0.7.1/elftoolchain-0.7.1.tar.bz2
 https://github.com/llvm/llvm-project/releases/download/llvmorg-21.1.2/llvm-21.1.2.src.tar.xz
 https://github.com/llvm/llvm-project/releases/download/llvmorg-21.1.2/cmake-21.1.2.src.tar.xz
