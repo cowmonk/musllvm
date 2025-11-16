@@ -15,3 +15,4 @@ Here are some dependencies required to build this toolchain:
 * [Chimera linux](https://chimera-linux.org) - Majority of patches are sourced from chimera linux.
 * [CMLFS](https://github.com/dslm4515/CMLFS) - Many of the build scripts were taken as reference for the musllvm toolchain itself
 * [Mussel](https://github.com/firasuke/mussel) - Best, shortest, fastest script that builds musl cross-compiler
+* [musl.cc](https://musl.cc) - Prebuilt cross compilers and other stuff
