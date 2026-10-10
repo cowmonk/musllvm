@@ -1,46 +1,49 @@
 include config.mk
 
+export ARCH TARGET PREFIX BUILD_DIR SOURCES_DIR SOURCES_FILE LLVM_MODE JOBS LINK_JOBS
+export HOST_CC HOST_CXX TARGET_CFLAGS HOST_CFLAGS HOST_CXXFLAGS HOST_LDFLAGS RUNNER
+
 all: build
 
+build:
+	sh scripts/build.sh all
+
 pull:
-	@if [ ! -d ${PROOT}/sources ]; then \
-		echo "Sources Directory Not Found!"; \
-		mkdir -p ${PROOT}/sources; \
-		echo "Pulling Sources..."; \
-		xargs -a ${SOURCES_FILE} -n1 -P4 -- curl -f -L -S -O --output-dir ${PROOT}/sources || { echo "curl failed"; exit 1; }; \
-		echo "Pulling cross musl compiler to build toolchain"
-		curl -f -L -O https://musl.cc/${ARCH}-linux-musl-cross.tgz --output-dir ${PROOT}/sources
-		echo "done"; \
-	else \
-		. ${PROOT}/scripts/check.sh; \
-	fi
+	sh scripts/check.sh pull
 
-build: init
-	. ${PROOT}/scripts/musl-cross.sh
-	. ${PROOT}/scripts/elftoolchain-cross.sh
+verify-sources:
+	sh scripts/check.sh verify
 
-init:
-	@if [ ! -d ./build/${FROOT} ]; then \
-		echo "Making toolchain directory..."; \
-        	mkdir -p ${PROOT}/build/${FROOT}; \
-	fi
-	@echo "updating configuration based on config.mk..."
-	cp -r config.mk ${PROOT}/scripts/config.sh
-	sed -i 's/shell //g' ${PROOT}/scripts/config.sh 
+doctor:
+	sh scripts/build.sh doctor
+
+show-config:
+	sh scripts/build.sh config
+
+headers builtins musl atomic runtimes toolchain configure-llvm:
+	sh scripts/build.sh $@
+
+verify:
+	sh scripts/verify.sh
+
+check:
+	sh scripts/test.sh
 
 clean:
-	rm -rf ${PROOT}/sources
-	rm -rf ${PROOT}/build
+	sh scripts/build.sh clean
 
 help:
-	@echo "musllvm"
-	@echo "-----------------------"
-	@echo "commands:"
-	@echo "	all - make all (duh)"
-	@echo "	pull - pull all sources (on first run), second run will check individually"
-	@echo "	build - build will build to toolchain"
-	@echo "	clean - clean up all sources and build artifacts"
-	@echo "	init - sets up everything, run also every time you make changes to config.mk"
-	@echo "	help - shows this menu"
+	@printf '%s\n' \
+	  'make [ARCH=x86_64|aarch64] [LLVM_MODE=system|source] [JOBS=2]' \
+	  '  build           build and verify the complete cross toolchain (default)' \
+	  '  doctor          check host dependencies' \
+	  '  show-config     print paths and target configuration' \
+	  '  pull            download and verify pinned source archives' \
+	  '  verify-sources  check downloaded archives without network access' \
+	  '  verify          compile, inspect, and optionally run C and C++ programs' \
+	  '  check           run offline build-driver tests' \
+	  '  clean           remove the selected toolchain and its work directory' \
+	  '  configure-llvm  configure the optional LLVM source build'
 
-.PHONY: all pull build clean init help
+.PHONY: all build pull verify-sources doctor show-config headers builtins musl
+.PHONY: atomic runtimes toolchain configure-llvm verify check clean help

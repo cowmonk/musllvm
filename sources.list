@@ -1,16 +1,5 @@
-https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.17.7.tar.xz
-https://musl.libc.org/releases/musl-1.2.5.tar.gz
-https://pub.sortix.org/libz/libz-1.2.8.2025.03.07.tar.gz
-https://github.com/chimera-linux/libatomic-chimera/archive/refs/tags/v0.90.0.tar.gz
-https://github.com/Projeto-Pindorama/musl-compat/archive/refs/tags/20251111.tar.gz
-https://github.com/libarchive/libarchive/releases/download/v3.8.2/libarchive-3.8.2.tar.gz
-https://sourceforge.net/projects/elftoolchain/files/Sources/elftoolchain-0.7.1/elftoolchain-0.7.1.tar.bz2
-https://github.com/llvm/llvm-project/releases/download/llvmorg-21.1.2/llvm-21.1.2.src.tar.xz
-https://github.com/llvm/llvm-project/releases/download/llvmorg-21.1.2/cmake-21.1.2.src.tar.xz
-https://github.com/llvm/llvm-project/releases/download/llvmorg-21.1.2/third-party-21.1.2.src.tar.xz
-https://github.com/llvm/llvm-project/releases/download/llvmorg-21.1.2/clang-21.1.2.src.tar.xz
-https://github.com/llvm/llvm-project/releases/download/llvmorg-21.1.2/compiler-rt-21.1.2.src.tar.xz
-https://github.com/llvm/llvm-project/releases/download/llvmorg-21.1.5/lld-21.1.5.src.tar.xz
-https://github.com/llvm/llvm-project/releases/download/llvmorg-21.1.5/libunwind-21.1.5.src.tar.xz
-https://github.com/llvm/llvm-project/releases/download/llvmorg-21.1.5/libcxx-21.1.5.src.tar.xz
-https://github.com/llvm/llvm-project/releases/download/llvmorg-21.1.5/libcxxabi-21.1.5.src.tar.xz
+# component archive sha256 url
+musl musl-1.2.5.tar.gz a9a118bbe84d8764da0ea0d28b3ab3fae8477fc7e4085d90102b8596fc7c75e4 https://musl.libc.org/releases/musl-1.2.5.tar.gz
+linux linux-6.17.7.tar.xz ddf2ea0d4439e1d57136be3623102af9458f601f5b1cb77e83246e88aea09d0e https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.17.7.tar.xz
+llvm llvm-project-21.1.8.src.tar.xz 4633a23617fa31a3ea51242586ea7fb1da7140e426bd62fc164261fe036aa142 https://github.com/llvm/llvm-project/releases/download/llvmorg-21.1.8/llvm-project-21.1.8.src.tar.xz
+atomic libatomic-chimera-0.90.0.tar.gz fccbd8c0ef7fd473275f835b3fca9275fb27a0c196cdcdff1f6d14ab12ed3a53 https://github.com/chimera-linux/libatomic-chimera/archive/refs/tags/v0.90.0.tar.gz

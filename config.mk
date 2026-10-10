@@ -1,16 +1,17 @@
-# musllvm default flags
-# --------------------------------
-# feel free to change these however you like
-#
+ARCH ?= x86_64
+TARGET ?= $(ARCH)-linux-musl
+PREFIX ?= $(CURDIR)/build/$(TARGET)
+BUILD_DIR ?= $(CURDIR)/build/work/$(TARGET)
+SOURCES_DIR ?= $(CURDIR)/sources
+SOURCES_FILE ?= $(CURDIR)/sources.list
 
-#
-# these are shared between the Makefile and scripts
-#
-ARCH=$(shell uname -m)
-PROOT=${PWD}
-SOURCES_FILE=${PROOT}/sources.list
-FROOT="${ARCH}-musllvm"
-CROSS="${PROOT}/build/cross" # cross directory
-
-# MAKEFLAGS to parse the amounto of cores used
-MAKEFLAGS="-j$(shell nproc) -l$(shell nproc)"
+LLVM_MODE ?= system
+JOBS ?= 2
+LINK_JOBS ?= 1
+HOST_CC ?= clang
+HOST_CXX ?= clang++
+TARGET_CFLAGS ?= -O2
+HOST_CFLAGS ?=
+HOST_CXXFLAGS ?=
+HOST_LDFLAGS ?=
+RUNNER ?=

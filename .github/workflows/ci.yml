@@ -1,0 +1,80 @@
+name: Toolchain checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      source_llvm:
+        description: Also build LLVM host tools from source
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  driver:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: make check
+
+  cross:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, aarch64]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-19 lld-19 llvm-19 llvm-19-dev cmake ninja-build curl xz-utils perl rsync pkg-config qemu-user
+          echo /usr/lib/llvm-19/bin >> "$GITHUB_PATH"
+      - uses: actions/cache@v4
+        with:
+          path: sources
+          key: sources-${{ hashFiles('sources.list') }}
+      - name: Build and run smoke tests
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          if [ "$ARCH" = aarch64 ]; then
+            make JOBS=2 RUNNER=qemu-aarch64
+          else
+            make JOBS=2
+          fi
+      - name: Check a resumed build
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: make runtimes JOBS=2
+      - name: Save build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostics-${{ matrix.arch }}
+          path: |
+            build/work/**/CMakeCache.txt
+            build/work/**/CMakeFiles/CMakeConfigureLog.yaml
+            build/work/**/verify/*.header
+            build/work/**/verify/*.segments
+            build/work/**/verify/*.dynamic
+
+  source:
+    if: github.event_name == 'workflow_dispatch' && inputs.source_llvm
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-19 lld-19 llvm-19 llvm-19-dev cmake ninja-build curl xz-utils perl rsync
+          echo /usr/lib/llvm-19/bin >> "$GITHUB_PATH"
+      - uses: actions/cache@v4
+        with:
+          path: sources
+          key: sources-${{ hashFiles('sources.list') }}
+      - run: make LLVM_MODE=source JOBS=2 LINK_JOBS=1
