@@ -26,6 +26,9 @@ headers builtins musl atomic runtimes toolchain configure-llvm:
 verify:
 	sh scripts/verify.sh
 
+package:
+	sh scripts/package.sh
+
 check:
 	sh scripts/test.sh
 
@@ -41,9 +44,10 @@ help:
 	  '  pull            download and verify pinned source archives' \
 	  '  verify-sources  check downloaded archives without network access' \
 	  '  verify          compile, inspect, and optionally run C and C++ programs' \
+	  '  package         archive a completed LLVM_MODE=source toolchain' \
 	  '  check           run offline build-driver tests' \
 	  '  clean           remove the selected toolchain and its work directory' \
 	  '  configure-llvm  configure the optional LLVM source build'
 
 .PHONY: all build pull verify-sources doctor show-config headers builtins musl
-.PHONY: atomic runtimes toolchain configure-llvm verify check clean help
+.PHONY: atomic runtimes toolchain configure-llvm verify package check clean help

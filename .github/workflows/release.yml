@@ -1,0 +1,116 @@
+name: Publish toolchains
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - sources.list
+      - config.mk
+      - Makefile
+      - scripts/**
+      - files/**
+      - patches/**
+      - tests/hello.*
+      - tests/cmake/**
+      - .github/workflows/release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-toolchains
+  cancel-in-progress: false
+
+jobs:
+  check:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: make check
+
+  build:
+    needs: check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, aarch64]
+    env:
+      ARCH: ${{ matrix.arch }}
+      LLVM_MODE: source
+      HOST_LDFLAGS: -static-libstdc++ -static-libgcc
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-19 lld-19 llvm-19 llvm-19-dev cmake ninja-build curl xz-utils perl rsync pkg-config qemu-user
+          echo /usr/lib/llvm-19/bin >> "$GITHUB_PATH"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            sources/*.tar.gz
+            sources/*.tar.xz
+          key: release-sources-${{ hashFiles('sources.list') }}
+      - name: Build and package
+        run: |
+          if [ "$ARCH" = aarch64 ]; then
+            echo RUNNER=qemu-aarch64 >> "$GITHUB_ENV"
+            export RUNNER=qemu-aarch64
+          fi
+          make JOBS=2 LINK_JOBS=1
+          make package
+      - name: Verify the unpacked toolchain
+        run: |
+          target="$ARCH-linux-musl"
+          archive="build/releases/musllvm-$target-host-x86_64-linux.tar.xz"
+          unpacked="$RUNNER_TEMP/toolchains"
+          mkdir -p "$unpacked"
+          mv "build/$target" "$RUNNER_TEMP/original-$target"
+          tar -xJf "$archive" -C "$unpacked"
+          make verify PREFIX="$unpacked/musllvm-$target" \
+            BUILD_DIR="$PWD/build/release-verify/$target" JOBS=2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-toolchain-${{ matrix.arch }}
+          path: |
+            build/releases/*.tar.xz
+            build/releases/*.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+      - name: Save build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-diagnostics-${{ matrix.arch }}
+          path: |
+            build/work/**/CMakeCache.txt
+            build/work/**/CMakeFiles/CMakeConfigureLog.yaml
+            build/**/verify/*.header
+            build/**/verify/*.segments
+            build/**/verify/*.dynamic
+          retention-days: 7
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-toolchain-*
+          merge-multiple: true
+          path: build/releases
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: sh scripts/publish.sh

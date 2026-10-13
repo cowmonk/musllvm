@@ -8,6 +8,25 @@ The toolchain includes musl, compiler-rt, libc++, libc++abi,
 LLVM libunwind and libatomic. Compiler tools run on the build host.
 
 
+downloads
+=========
+
+[Releases](https://github.com/cowmonk/musllvm/releases) provide archives
+for x86_64-linux-musl and aarch64-linux-musl. Both run on x86_64 Linux
+hosts with glibc 2.39 or newer. The compiler tools are included.
+Target programs use musl.
+
+Download an archive and SHA256SUMS from the same release, then check
+the archive you downloaded:
+
+    sha256sum --ignore-missing -c SHA256SUMS
+    tar -xJf musllvm-x86_64-linux-musl-host-x86_64-linux.tar.xz
+    eval "$(musllvm-x86_64-linux-musl/bin/x86_64-linux-musl-env)"
+
+Each archive includes its source pins, licenses and build information under
+share/musllvm/. pkg-config is optional and uses the host installation.
+
+
 dependencies
 ============
 
@@ -143,8 +162,30 @@ matches the target or RUNNER names an emulator.
     make verify ARCH=aarch64 RUNNER=qemu-aarch64
 
 [CI](.github/workflows/ci.yml) runs offline tests and both target builds.
-A manual workflow run can also build LLVM from source. Full toolchain
-build verification is still pending.
+A manual workflow run can also build LLVM from source.
+
+
+publishing
+==========
+
+[The release workflow](.github/workflows/release.yml) runs on pushes to
+main that change sources.list, config.mk, Makefile, scripts/, files/,
+patches/ or the compiler smoke tests. This covers source version updates
+and new core components added to the build. README edits do not publish
+a release. The workflow can also be run manually from main.
+
+Both targets build with LLVM_MODE=source. Each archive is unpacked into
+a new location and tested before upload. The release is published after
+both builds pass, with SHA256SUMS and sources.list attached.
+Tags use musllvm-YYYY-MM-DD-COMMIT, with the first 12 commit characters.
+Rerunning a published commit keeps its release assets.
+
+To package a completed source build yourself:
+
+    make package LLVM_MODE=source ARCH=x86_64
+
+Archives go to build/releases/. Set DIST_DIR to change the output directory.
+The first release still needs verification on GitHub Actions.
 
 
 credits
