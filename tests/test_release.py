@@ -32,7 +32,7 @@ if action == os.environ.get("FAKE_GH_FAIL"):
 if action == "view":
     state = os.environ.get("FAKE_RELEASE", "missing")
     if state == "missing":
-        sys.exit(1)
+        sys.exit("release not found")
     print("true" if state == "draft" else "false")
 elif action in ("create", "upload"):
     for name in ("SHA256SUMS", "sources.list"):
@@ -223,6 +223,10 @@ class PublishTests(unittest.TestCase):
                     self.log.unlink()
                 calls = self.publish(success=False, FAKE_RELEASE=state, FAKE_GH_FAIL=action)
                 self.assertNotIn("edit", [call[1] for call in calls])
+
+    def test_failed_release_lookup_creates_nothing(self):
+        calls = self.publish(success=False, FAKE_GH_FAIL="view")
+        self.assertEqual([call[1] for call in calls], ["view"])
 
     def test_wrong_checkout_prevents_publication(self):
         self.assertEqual(self.publish(success=False, FAKE_GIT_SHA="2" * 40), [])

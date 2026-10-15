@@ -24,7 +24,11 @@ main()
 	std::thread worker([&]() {
 		thread_local thread_state state{destroyed};
 
-		total.store(std::accumulate(values.begin(), values.end(), 0));
+		try {
+			throw std::runtime_error("worker");
+		} catch (const std::runtime_error &) {
+			total.store(std::accumulate(values.begin(), values.end(), 0));
+		}
 	});
 
 	worker.join();

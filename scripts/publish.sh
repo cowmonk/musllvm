@@ -38,14 +38,17 @@ cp "$root/sources.list" sources.list
 	printf '\n%s\n' 'Verify downloads with sha256sum --ignore-missing -c SHA256SUMS.'
 } > notes.md
 
-if draft=$(gh release view "$tag" --json isDraft --jq .isDraft); then
+if draft=$(gh release view "$tag" --json isDraft --jq .isDraft 2> view.err); then
 	if [ "$draft" = false ]; then
 		printf 'release already published: %s\n' "$tag"
 		exit
 	fi
 	gh release upload "$tag" "$@" SHA256SUMS sources.list --clobber
-else
+elif grep -F 'release not found' view.err >/dev/null; then
 	gh release create "$tag" "$@" SHA256SUMS sources.list --draft \
 		--target "$GITHUB_SHA" --title "musllvm $date" --notes-file notes.md
+else
+	cat view.err >&2
+	exit 1
 fi
 gh release edit "$tag" --notes-file notes.md --draft=false --latest

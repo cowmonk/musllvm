@@ -104,8 +104,14 @@ The environment command sets CC, CXX, LLVM binutils, LD, PKG_CONFIG,
 TARGET, MUSLLVM_SYSROOT and CMAKE_TOOLCHAIN_FILE. Use the environment
 command matching your target and installation path.
 
-The compiler wrappers select the target, sysroot, LLD and target runtimes.
-They remove host header and library environment paths. The pkg-config
+The compiler wrappers select the target, sysroot, LLD and target runtimes
+through share/musllvm/clang.cfg. They remove host header and library
+environment paths and ignore host Clang configuration files.
+
+The configuration also enables the Chimera Linux hardening defaults:
+-fstack-protector-strong, -fno-semantic-interposition, --as-needed and
+-z relro -z now. Command-line flags such as -fno-stack-protector,
+-Wl,--no-as-needed or -Wl,-z,lazy override them. The pkg-config
 wrapper searches the target sysroot.
 
 For CMake:
@@ -142,9 +148,6 @@ A running build holds a lock in BUILD_DIR/lock. After a forced termination,
 check that the build process has stopped before removing a leftover lock
 with rmdir.
 
-The older Chimera patches in patches/ are kept as references. They are
-not applied to the pinned LLVM release.
-
 
 checks
 ======
@@ -154,23 +157,24 @@ checks
 Runs shell syntax checks and driver tests with mocked tools. This does
 no compilation or downloads.
 
-A completed build also runs make verify. This compiles static and dynamic
-C and C++ programs, checks their ELF architecture and runtime dependencies,
-and tests the CMake toolchain file. Programs run when the host architecture
-matches the target or RUNNER names an emulator.
+A completed build also runs make verify. This compiles static, static-pie
+and dynamic C and C++ programs, directly and through the CMake toolchain
+file, and checks their ELF architecture and runtime dependencies. It also
+compiles with -Werror. Programs run when the host architecture matches the
+target or RUNNER names an emulator.
 
     make verify ARCH=aarch64 RUNNER=qemu-aarch64
 
 [CI](.github/workflows/ci.yml) runs offline tests and both target builds.
-A manual workflow run can also build LLVM from source.
+A manual workflow run can build both targets with LLVM from source instead.
 
 
 publishing
 ==========
 
 [The release workflow](.github/workflows/release.yml) runs on pushes to
-main that change sources.list, config.mk, Makefile, scripts/, files/,
-patches/ or the compiler smoke tests. This covers source version updates
+main that change sources.list, config.mk, Makefile, scripts/, files/
+or the compiler smoke tests. This covers source version updates
 and new core components added to the build. README edits do not publish
 a release. The workflow can also be run manually from main.
 
@@ -191,7 +195,7 @@ The first release still needs verification on GitHub Actions.
 credits
 ========
 
-* [Chimera Linux](https://chimera-linux.org) - original patches and libatomic
+* [Chimera Linux](https://chimera-linux.org) - libatomic and the libc++ typeinfo setting
 * [CMLFS](https://github.com/dslm4515/CMLFS) - build script references
 * [Mussel](https://github.com/firasuke/mussel) - musl cross compiler references
 * [musl.cc](https://musl.cc) - cross compiler resources

@@ -14,9 +14,7 @@ done
 [ "$link" = no ] || set -- "$@" -latomic
 case "${0##*/}" in
 *++|*-c++)
-	set -- --driver-mode=g++ -stdlib=libc++ -nostdinc++ -isystem "$sysroot/usr/include/c++/v1" "$@" ;;
+	set -- --driver-mode=g++ -nostdinc++ -isystem "$sysroot/usr/include/c++/v1" "$@" ;;
 esac
-exec "$prefix/libexec/clang" --target=@TARGET@ --sysroot="$sysroot" \
-	--gcc-toolchain="$prefix/share/musllvm/empty-gcc" \
-	-resource-dir="$prefix/lib/clang/@RESOURCE_VERSION@" \
-	--rtlib=compiler-rt --unwindlib=libunwind --ld-path="$prefix/libexec/ld.lld" "$@"
+exec "$prefix/libexec/clang" --no-default-config --config="$prefix/share/musllvm/clang.cfg" \
+	--sysroot="$sysroot" "$@"

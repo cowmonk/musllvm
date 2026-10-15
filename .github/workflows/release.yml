@@ -8,8 +8,8 @@ on:
       - config.mk
       - Makefile
       - scripts/**
+      - '!scripts/test.sh'
       - files/**
-      - patches/**
       - tests/hello.*
       - tests/cmake/**
       - .github/workflows/release.yml
@@ -51,17 +51,15 @@ jobs:
           echo /usr/lib/llvm-19/bin >> "$GITHUB_PATH"
       - uses: actions/cache@v4
         with:
-          path: |
-            sources/*.tar.gz
-            sources/*.tar.xz
-          key: release-sources-${{ hashFiles('sources.list') }}
+          path: sources
+          key: sources-${{ hashFiles('sources.list') }}
       - name: Build and package
         run: |
           if [ "$ARCH" = aarch64 ]; then
             echo RUNNER=qemu-aarch64 >> "$GITHUB_ENV"
             export RUNNER=qemu-aarch64
           fi
-          make JOBS=2 LINK_JOBS=1
+          make runtimes JOBS=2 LINK_JOBS=1
           make package
       - name: Verify the unpacked toolchain
         run: |

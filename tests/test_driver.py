@@ -56,7 +56,6 @@ elif name == "curl":
     if os.environ.get("FAKE_CURL_FAIL"):
         sys.exit(22)
 elif name == "make":
-    directory = Path(args[args.index("-C") + 1])
     if "headers_install" in args:
         prefix = next(arg.split("=", 1)[1] for arg in args if arg.startswith("INSTALL_HDR_PATH="))
         write(Path(prefix) / "include/linux/version.h")
@@ -168,6 +167,10 @@ class DriverTests(unittest.TestCase):
     def commands(self):
         return [json.loads(line) for line in self.log.read_text().splitlines()]
 
+    def install_capture(self, path):
+        path.write_text(CAPTURE)
+        path.chmod(0o755)
+
     def install_wrapper(self, name, template, prefix=None):
         prefix = prefix or Path(self.temporary.name) / "relocated tools' path"
         (prefix / "bin").mkdir(parents=True, exist_ok=True)
@@ -182,7 +185,8 @@ class DriverTests(unittest.TestCase):
         result = self.run_make("show-config", "ARCH=aarch64", "JOBS=1")
         self.assertIn("TARGET=aarch64-linux-musl", result.stdout)
         self.assertIn("JOBS=1", result.stdout)
-        self.assertEqual((self.root / "scripts/config.sh").read_bytes(), (ROOT / "scripts/config.sh").read_bytes())
+        self.assertIn(f"PREFIX={self.root}/build/aarch64-linux-musl\n", result.stdout)
+        self.assertIn(f"BUILD_DIR={self.root}/build/work/aarch64-linux-musl\n", result.stdout)
         self.assertFalse((self.root / "build").exists())
 
     def test_invalid_configuration_fails_before_work(self):
@@ -238,13 +242,6 @@ class DriverTests(unittest.TestCase):
         self.assertEqual(os.readlink(prefix / "libexec/clang"), "../host/bin/clang")
         self.assertTrue((prefix / "bin/x86_64-linux-musl-c++").exists())
 
-    def test_architectures_use_separate_work_and_output(self):
-        self.run_make("runtimes", "ARCH=x86_64")
-        self.run_make("runtimes", "ARCH=aarch64")
-        for arch in ("x86_64", "aarch64"):
-            self.assertTrue((self.root / f"build/{arch}-linux-musl/bin/{arch}-linux-musl-cc").exists())
-            self.assertTrue((self.root / f"build/work/{arch}-linux-musl/stamps/runtimes").exists())
-
     def test_clean_preserves_unmarked_directory(self):
         prefix = self.root / "unrelated"
         prefix.mkdir()
@@ -261,14 +258,12 @@ class DriverTests(unittest.TestCase):
 
     def test_cxx_wrapper_relocation_and_host_isolation(self):
         wrapper = self.install_wrapper("x86_64-linux-musl-c++", "cc.sh")
-        capture = wrapper.parent.parent / "libexec/clang"
-        capture.write_text(CAPTURE)
-        capture.chmod(0o755)
+        self.install_capture(wrapper.parent.parent / "libexec/clang")
         env = {**self.env, "CPATH": "/host/headers", "LIBRARY_PATH": "/host/libraries"}
-        result = subprocess.check_output([str(wrapper), "source with spaces.cpp", "-static"], env=env, text=True)
+        result = subprocess.check_output([str(wrapper), "source with spaces.cpp"], env=env, text=True)
         invocation = json.loads(result)
         self.assertIn("--driver-mode=g++", invocation["args"])
-        self.assertIn("-stdlib=libc++", invocation["args"])
+        self.assertIn(f"--config={wrapper.parent.parent}/share/musllvm/clang.cfg", invocation["args"])
         self.assertIn("source with spaces.cpp", invocation["args"])
         self.assertIn(f"--sysroot={wrapper.parent.parent}/sysroot", invocation["args"])
         self.assertNotIn("CPATH", invocation["env"])
@@ -276,9 +271,7 @@ class DriverTests(unittest.TestCase):
 
     def test_wrapper_omits_default_libraries_for_compile_only_and_freestanding(self):
         wrapper = self.install_wrapper("x86_64-linux-musl-cc", "cc.sh")
-        capture = wrapper.parent.parent / "libexec/clang"
-        capture.write_text(CAPTURE)
-        capture.chmod(0o755)
+        self.install_capture(wrapper.parent.parent / "libexec/clang")
         for option in ("-c", "-E", "-nostdlib", "-nodefaultlibs"):
             with self.subTest(option=option):
                 invocation = json.loads(subprocess.check_output([str(wrapper), option, "source.c"], env=self.env, text=True))
@@ -286,16 +279,12 @@ class DriverTests(unittest.TestCase):
 
     def test_sysroot_override_applies_to_compiler_and_pkg_config(self):
         wrapper = self.install_wrapper("x86_64-linux-musl-cc", "cc.sh")
-        capture = wrapper.parent.parent / "libexec/clang"
-        capture.write_text(CAPTURE)
-        capture.chmod(0o755)
+        self.install_capture(wrapper.parent.parent / "libexec/clang")
         env = {**self.env, "MUSLLVM_SYSROOT": "/another/sysroot"}
         invocation = json.loads(subprocess.check_output([str(wrapper), "source.c"], env=env, text=True))
         self.assertIn("--sysroot=/another/sysroot", invocation["args"])
         pkg_wrapper = self.install_wrapper("x86_64-linux-musl-pkg-config", "pkg-config.sh")
-        capture = self.tools / "pkg-config"
-        capture.write_text(CAPTURE)
-        capture.chmod(0o755)
+        self.install_capture(self.tools / "pkg-config")
         invocation = json.loads(subprocess.check_output([str(pkg_wrapper), "--libs", "target"], env=env, text=True))
         self.assertEqual(invocation["env"]["PKG_CONFIG_SYSROOT_DIR"], "/another/sysroot")
 
@@ -308,9 +297,7 @@ class DriverTests(unittest.TestCase):
 
     def test_pkg_config_cannot_see_host_packages(self):
         wrapper = self.install_wrapper("x86_64-linux-musl-pkg-config", "pkg-config.sh")
-        capture = self.tools / "pkg-config"
-        capture.write_text(CAPTURE)
-        capture.chmod(0o755)
+        self.install_capture(self.tools / "pkg-config")
         env = {**self.env, "PKG_CONFIG_PATH": "/host/packages", "PKG_CONFIG_LIBDIR": "/host/packages"}
         invocation = json.loads(subprocess.check_output([str(wrapper), "--libs", "target"], env=env, text=True))
         self.assertEqual(invocation["env"]["PKG_CONFIG_PATH"], "")

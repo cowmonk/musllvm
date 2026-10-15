@@ -195,9 +195,11 @@ runtimes()
 	if ! done_stage runtimes; then
 		# musl lacks __cxa_thread_atexit_impl
 		# compile only probes cannot detect missing symbols
+		# typeinfo comparison 2 also compares names, as libstdc++ does (chimera)
 		target_cmake -S "$LLVM_SOURCE/runtimes" -B "$BUILD_DIR/runtimes" \
 			-DCMAKE_INSTALL_PREFIX=/usr -DLLVM_ENABLE_RUNTIMES='libunwind;libcxxabi;libcxx' \
 			-DLIBCXX_HAS_MUSL_LIBC=ON -DLIBCXX_USE_COMPILER_RT=ON \
+			-DLIBCXX_TYPEINFO_COMPARISON_IMPLEMENTATION=2 \
 			-DLIBCXX_CXX_ABI=libcxxabi -DLIBCXX_ENABLE_SHARED=ON -DLIBCXX_ENABLE_STATIC=ON \
 			-DLIBCXX_STATICALLY_LINK_ABI_IN_STATIC_LIBRARY=ON \
 			-DLIBCXX_STATICALLY_LINK_ABI_IN_SHARED_LIBRARY=OFF -DLIBCXX_ENABLE_ABI_LINKER_SCRIPT=ON \
@@ -231,6 +233,8 @@ wrappers()
 	done
 	sed -e "s/@TARGET@/$TARGET/g" -e "s/@ARCH@/$ARCH/g" \
 		"$PROOT/files/toolchain/toolchain.cmake" > "$PREFIX/share/musllvm/toolchain.cmake"
+	sed -e "s/@TARGET@/$TARGET/g" -e "s/@RESOURCE_VERSION@/$RESOURCE_VERSION/g" \
+		"$PROOT/files/toolchain/clang.cfg" > "$PREFIX/share/musllvm/clang.cfg"
 	printf '%s\n' "$RESOURCE_VERSION" > "$PREFIX/share/musllvm/resource-version"
 	printf 'Toolchain ready: %s\n' "$PREFIX"
 }
