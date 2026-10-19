@@ -64,9 +64,23 @@ extract_source()
 {
 	source_info "$1"
 	archive_ok || die "missing or corrupt $archive; run make pull"
+	set -- "$PROOT/patches/$component/"*.patch
+	source_digest=$digest
+	if [ -f "$1" ]; then
+		need patch
+		source_digest=$({
+			printf '%s\n' "$digest"
+			for source_patch do
+				printf '%s\n' "${source_patch##*/}"
+				cat "$source_patch"
+			done
+		} | sha256sum)
+		source_digest=${source_digest%% *}
+	fi
 	source_path="$PROOT/build/src/$source_name"
 	if [ -f "$source_path/.musllvm-source" ]; then
-		[ "$(cat "$source_path/.musllvm-source")" = "$digest" ] || die "source digest changed: $source_path"
+		[ "$(cat "$source_path/.musllvm-source")" = "$source_digest" ] ||
+			die "source or patches changed; remove $source_path and clean the affected toolchain before rebuilding"
 		return
 	fi
 	[ ! -e "$source_path" ] || die "incomplete source directory: $source_path"
@@ -80,7 +94,13 @@ extract_source()
 		mkdir "$source_tmp"
 		printf 'Extracting %s\n' "$archive"
 		tar -xf "$SOURCES_DIR/$archive" --strip-components=1 -C "$source_tmp" || die "could not extract $archive"
-		printf '%s\n' "$digest" > "$source_tmp/.musllvm-source"
+		for source_patch do
+			[ -f "$source_patch" ] || continue
+			printf 'Applying %s\n' "${source_patch##*/}"
+			patch --batch --forward --fuzz=0 -p1 -d "$source_tmp" < "$source_patch" ||
+				die "could not apply $source_patch"
+		done
+		printf '%s\n' "$source_digest" > "$source_tmp/.musllvm-source"
 		mv "$source_tmp" "$source_path"
 	)
 }

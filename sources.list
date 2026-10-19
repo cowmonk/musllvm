@@ -1,5 +1,5 @@
 # component archive sha256 url
-musl musl-1.2.5.tar.gz a9a118bbe84d8764da0ea0d28b3ab3fae8477fc7e4085d90102b8596fc7c75e4 https://musl.libc.org/releases/musl-1.2.5.tar.gz
-linux linux-6.17.7.tar.xz ddf2ea0d4439e1d57136be3623102af9458f601f5b1cb77e83246e88aea09d0e https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.17.7.tar.xz
-llvm llvm-project-21.1.8.src.tar.xz 4633a23617fa31a3ea51242586ea7fb1da7140e426bd62fc164261fe036aa142 https://github.com/llvm/llvm-project/releases/download/llvmorg-21.1.8/llvm-project-21.1.8.src.tar.xz
+musl musl-1.2.6.tar.gz d585fd3b613c66151fc3249e8ed44f77020cb5e6c1e635a616d3f9f82460512a https://musl.libc.org/releases/musl-1.2.6.tar.gz
+linux linux-7.3.tar.xz 87363c24f10e06321eb362765521094e94471f6bff8bce2d6b3e40f39f004953 https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.3.tar.xz
+llvm llvm-project-23.1.3.src.tar.xz c44186a7762ed28954be72e5ff6df9808e0779d4f1bf014ecc4e7e211d31ee34 https://github.com/llvm/llvm-project/releases/download/llvmorg-23.1.3/llvm-project-23.1.3.src.tar.xz
 atomic libatomic-chimera-0.90.0.tar.gz fccbd8c0ef7fd473275f835b3fca9275fb27a0c196cdcdff1f6d14ab12ed3a53 https://github.com/chimera-linux/libatomic-chimera/archive/refs/tags/v0.90.0.tar.gz

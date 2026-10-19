@@ -31,10 +31,11 @@ def write(path, value="fixture"):
     path.write_text(value)
 
 if name in ("clang", "clang++"):
+    version = os.environ.get("FAKE_CLANG_VERSION", "21.1.8")
     if "--version" in args:
-        print("clang version 21.1.8 (fixture)")
+        print("clang version " + version + " (fixture)")
     elif "-dumpversion" in args:
-        print("21.1.8")
+        print(version)
     elif "-print-resource-dir" in args:
         print(os.environ["FAKE_RESOURCE"])
     elif "-print-target-triple" in args:
@@ -171,6 +172,13 @@ class DriverTests(unittest.TestCase):
         path.write_text(CAPTURE)
         path.chmod(0o755)
 
+    def source_patch(self, name, before="fixture", after="patched"):
+        path = self.root / "patches/llvm" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("--- a/placeholder\n+++ b/placeholder\n@@ -1 +1 @@\n-" + before +
+                        "\n\\ No newline at end of file\n+" + after + "\n\\ No newline at end of file\n")
+        return path
+
     def install_wrapper(self, name, template, prefix=None):
         prefix = prefix or Path(self.temporary.name) / "relocated tools' path"
         (prefix / "bin").mkdir(parents=True, exist_ok=True)
@@ -197,6 +205,12 @@ class DriverTests(unittest.TestCase):
             with self.subTest(arguments=arguments):
                 self.run_make("show-config", *arguments, success=False)
         self.assertFalse((self.root / "build").exists())
+
+    def test_old_system_clang_is_rejected_before_fetch(self):
+        result = self.run_make("runtimes", success=False,
+                               env={**self.env, "FAKE_CLANG_VERSION": "20.1.8"})
+        self.assertIn("requires Clang 21 or newer", result.stdout)
+        self.assertFalse((self.root / "sources").exists())
 
     def test_fetch_verifies_and_skips_downloaded_archives(self):
         self.run_make("pull")
@@ -241,6 +255,53 @@ class DriverTests(unittest.TestCase):
         prefix = self.root / "build/x86_64-linux-musl"
         self.assertEqual(os.readlink(prefix / "libexec/clang"), "../host/bin/clang")
         self.assertTrue((prefix / "bin/x86_64-linux-musl-c++").exists())
+
+    def test_source_patches_apply_once_in_order_and_are_installed(self):
+        self.source_patch("10-second.patch", "first", "second")
+        self.source_patch("00-first.patch", "fixture", "first")
+        result = self.run_make("runtimes")
+        source = self.root / "build/src/llvm-test"
+        self.assertEqual((source / "placeholder").read_text(), "second")
+        self.assertLess(result.stdout.index("Applying 00-first.patch"), result.stdout.index("Applying 10-second.patch"))
+        installed = self.root / "build/x86_64-linux-musl/share/musllvm/patches/llvm/00-first.patch"
+        self.assertEqual(installed.read_bytes(), (self.root / "patches/llvm/00-first.patch").read_bytes())
+        self.assertNotIn("Applying", self.run_make("runtimes", "JOBS=1").stdout)
+
+    def test_changed_or_removed_patch_rejects_cached_sources(self):
+        patch = self.source_patch("00-fixture.patch")
+        self.run_make("runtimes")
+        commands = sum(item["tool"] in ("make", "cmake") for item in self.commands())
+        self.source_patch("00-fixture.patch", after="changed")
+        result = self.run_make("runtimes", success=False)
+        self.assertIn("source or patches changed", result.stdout)
+        patch.unlink()
+        result = self.run_make("runtimes", success=False)
+        self.assertIn("source or patches changed", result.stdout)
+        self.assertEqual(sum(item["tool"] in ("make", "cmake") for item in self.commands()), commands)
+        self.assertEqual((self.root / "build/src/llvm-test/placeholder").read_text(), "patched")
+
+    def test_failed_source_patch_does_not_publish_extraction(self):
+        self.source_patch("00-broken.patch", before="missing")
+        result = self.run_make("runtimes", success=False)
+        self.assertIn("could not apply", result.stdout)
+        self.assertFalse((self.root / "build/src/llvm-test").exists())
+        self.assertFalse((self.root / "build/src/llvm-test.lock").exists())
+        self.assertTrue((self.root / "sources/llvm-test.tar.gz").exists())
+        self.assertFalse(any(item["tool"] in ("make", "cmake") for item in self.commands()))
+
+    def test_chimera_runtime_settings_preserve_target_flags(self):
+        for arch in ("x86_64", "aarch64"):
+            with self.subTest(arch=arch):
+                self.run_make("runtimes", "ARCH=" + arch, "TARGET_CFLAGS=-Os")
+                work = self.root / "build/work" / (arch + "-linux-musl")
+                options = json.loads((work / "runtimes/fixture-config.json").read_text())
+                self.assertIn("-DLIBCXX_HARDENING_MODE=fast", options)
+                self.assertIn("-DLIBCXX_TYPEINFO_COMPARISON_IMPLEMENTATION=2", options)
+                calls = [item for item in self.commands() if item["tool"] == "make" and str(work / "atomic") in item["args"]]
+                self.assertEqual(len(calls), 2)
+                for call in calls:
+                    flags = next(argument for argument in call["args"] if argument.startswith("CFLAGS="))
+                    self.assertEqual(flags, "CFLAGS=-Os" + (" -mno-outline-atomics" if arch == "aarch64" else ""))
 
     def test_clean_preserves_unmarked_directory(self):
         prefix = self.root / "unrelated"

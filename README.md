@@ -23,7 +23,7 @@ the archive you downloaded:
     tar -xJf musllvm-x86_64-linux-musl-host-x86_64-linux.tar.xz
     eval "$(musllvm-x86_64-linux-musl/bin/x86_64-linux-musl-env)"
 
-Each archive includes its source pins, licenses and build information under
+Each archive includes its source pins, patches, licenses and build information under
 share/musllvm/. pkg-config is optional and uses the host installation.
 
 
@@ -32,13 +32,14 @@ dependencies
 
 Build on a Linux host with:
 
-    clang/llvm    Clang 19 or newer, clang++, LLD, LLVM utilities and
+    clang/llvm    Clang 21 or newer, clang++, LLD, LLVM utilities and
                   matching llvm-config and LLVM CMake metadata (system mode)
     make          GNU make
     cmake         3.20 or newer
     ninja
     python3
     perl
+    patch         GNU patch
     curl
     tar           gzip and xz support
     sha256sum
@@ -114,6 +115,8 @@ The configuration also enables the Chimera Linux hardening defaults:
 -Wl,--no-as-needed or -Wl,-z,lazy override them. The pkg-config
 wrapper searches the target sysroot.
 
+libc++ uses Chimera's fast hardening mode and typeinfo comparison setting.
+
 For CMake:
 
     cmake -S . -B out -G Ninja \
@@ -139,10 +142,15 @@ Downloads enter the cache after checksum verification.
     make show-config
 
 Run the same command after a failed build to resume completed stages.
-Changes to the target, source pins, compiler, paths, build recipes or
+Changes to the target, source pins, patches, compiler, paths, build recipes or
 library flags require make clean with the same ARCH, PREFIX and BUILD_DIR.
 Cleaning removes that toolchain and its work directory, but keeps the
 downloaded and extracted sources. Changing JOBS does not require cleaning.
+
+The build applies [patches](patches/README.md) before configuring each source.
+If a patch changes for an archive already extracted, remove that source's
+directory under build/src/ before rebuilding. Patch failures leave the
+downloaded archive available for another attempt.
 
 A running build holds a lock in BUILD_DIR/lock. After a forced termination,
 check that the build process has stopped before removing a leftover lock
@@ -173,7 +181,7 @@ publishing
 ==========
 
 [The release workflow](.github/workflows/release.yml) runs on pushes to
-main that change sources.list, config.mk, Makefile, scripts/, files/
+main that change sources.list, config.mk, Makefile, scripts/, files/, patches/
 or the compiler smoke tests. This covers source version updates
 and new core components added to the build. README edits do not publish
 a release. The workflow can also be run manually from main.
@@ -195,7 +203,7 @@ The first release still needs verification on GitHub Actions.
 credits
 ========
 
-* [Chimera Linux](https://chimera-linux.org) - libatomic and the libc++ typeinfo setting
+* [Chimera Linux](https://chimera-linux.org) - patches, libatomic and toolchain defaults
 * [CMLFS](https://github.com/dslm4515/CMLFS) - build script references
 * [Mussel](https://github.com/firasuke/mussel) - musl cross compiler references
 * [musl.cc](https://musl.cc) - cross compiler resources

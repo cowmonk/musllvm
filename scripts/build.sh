@@ -7,7 +7,7 @@ TOOLS='clang clang++ ld.lld llvm-ar llvm-ranlib llvm-nm llvm-objcopy llvm-objdum
 
 doctor()
 {
-	for program in make cmake ninja python3 perl tar xz curl sha256sum rsync; do
+	for program in make cmake ninja python3 perl tar xz curl sha256sum rsync patch; do
 		need "$program"
 	done
 	need "$HOST_CC"
@@ -17,7 +17,7 @@ doctor()
 			die "LLVM_MODE=system requires Clang; set HOST_CC=clang"
 		clang_major=$("$HOST_CC" -dumpversion)
 		clang_major=${clang_major%%.*}
-		[ "$clang_major" -ge 19 ] 2>/dev/null || die "LLVM_MODE=system requires Clang 19 or newer"
+		[ "$clang_major" -ge 21 ] 2>/dev/null || die "LLVM_MODE=system requires Clang 21 or newer"
 		for program in $TOOLS llvm-config; do need "$program"; done
 		llvm_cmake=$(llvm-config --cmakedir)
 		[ -f "$llvm_cmake/LLVMConfig.cmake" ] || die "LLVM CMake metadata missing; install the matching LLVM development package"
@@ -180,12 +180,16 @@ musl()
 atomic()
 {
 	if ! done_stage atomic; then
+		atomic_cflags=$TARGET_CFLAGS
+		if [ "$ARCH" = aarch64 ]; then
+			atomic_cflags="$atomic_cflags -mno-outline-atomics"
+		fi
 		mkdir -p "$BUILD_DIR/atomic"
 		cp "$ATOMIC_SOURCE/atomic.c" "$ATOMIC_SOURCE/Makefile" "$BUILD_DIR/atomic/"
 		make -C "$BUILD_DIR/atomic" -j "$JOBS" CC="$BUILD_DIR/musl-cc" \
-			AR="$PREFIX/libexec/llvm-ar" CFLAGS="$TARGET_CFLAGS"
+			AR="$PREFIX/libexec/llvm-ar" CFLAGS="$atomic_cflags"
 		make -C "$BUILD_DIR/atomic" CC="$BUILD_DIR/musl-cc" \
-			AR="$PREFIX/libexec/llvm-ar" CFLAGS="$TARGET_CFLAGS" PREFIX=/usr DESTDIR="$SYSROOT" install
+			AR="$PREFIX/libexec/llvm-ar" CFLAGS="$atomic_cflags" PREFIX=/usr DESTDIR="$SYSROOT" install
 		mark_stage atomic
 	fi
 }
@@ -200,6 +204,7 @@ runtimes()
 			-DCMAKE_INSTALL_PREFIX=/usr -DLLVM_ENABLE_RUNTIMES='libunwind;libcxxabi;libcxx' \
 			-DLIBCXX_HAS_MUSL_LIBC=ON -DLIBCXX_USE_COMPILER_RT=ON \
 			-DLIBCXX_TYPEINFO_COMPARISON_IMPLEMENTATION=2 \
+			-DLIBCXX_HARDENING_MODE=fast \
 			-DLIBCXX_CXX_ABI=libcxxabi -DLIBCXX_ENABLE_SHARED=ON -DLIBCXX_ENABLE_STATIC=ON \
 			-DLIBCXX_STATICALLY_LINK_ABI_IN_STATIC_LIBRARY=ON \
 			-DLIBCXX_STATICALLY_LINK_ABI_IN_SHARED_LIBRARY=OFF -DLIBCXX_ENABLE_ABI_LINKER_SCRIPT=ON \
@@ -236,6 +241,9 @@ wrappers()
 	sed -e "s/@TARGET@/$TARGET/g" -e "s/@RESOURCE_VERSION@/$RESOURCE_VERSION/g" \
 		"$PROOT/files/toolchain/clang.cfg" > "$PREFIX/share/musllvm/clang.cfg"
 	printf '%s\n' "$RESOURCE_VERSION" > "$PREFIX/share/musllvm/resource-version"
+	if [ -d "$PROOT/patches" ]; then
+		cp -R "$PROOT/patches" "$PREFIX/share/musllvm/"
+	fi
 	printf 'Toolchain ready: %s\n' "$PREFIX"
 }
 
@@ -278,6 +286,11 @@ config_digest=$({
 	"$BOOTSTRAP_CXX" --version
 	cat "$SOURCES_FILE"
 	cat "$PROOT/scripts/build.sh" "$PROOT/scripts/config.sh"
+	for source_patch in "$PROOT"/patches/*/*.patch; do
+		[ -f "$source_patch" ] || continue
+		printf '%s\n' "${source_patch#"$PROOT/"}"
+		cat "$source_patch"
+	done
 	if [ "$LLVM_MODE" = system ]; then
 		for program in $TOOLS llvm-config; do command -v "$program"; done
 		ld.lld --version
