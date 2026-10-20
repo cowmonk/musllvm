@@ -197,7 +197,6 @@ To package a completed source build yourself:
     make package LLVM_MODE=source ARCH=x86_64
 
 Archives go to build/releases/. Set DIST_DIR to change the output directory.
-The first release still needs verification on GitHub Actions.
 
 
 credits
