@@ -142,6 +142,16 @@ class DriverTests(unittest.TestCase):
                         info = tarfile.TarInfo(component + "-test/" + relative)
                         info.size = 7
                         stream.addfile(info, io.BytesIO(b"fixture"))
+                if component == "llvm":
+                    headers = {
+                        "unwind.h": b"#include <__libunwind_config.h>\n#include <unwind_itanium.h>\n",
+                        "__libunwind_config.h": b"#define UNWIND_CONFIG_FIXTURE 1\n",
+                        "unwind_itanium.h": b"#define UNWIND_ITANIUM_FIXTURE 1\n",
+                    }
+                    for name, content in headers.items():
+                        info = tarfile.TarInfo(component + "-test/libunwind/include/" + name)
+                        info.size = len(content)
+                        stream.addfile(info, io.BytesIO(content))
             digest = hashlib.sha256(archive.read_bytes()).hexdigest()
             manifest.append(f"{component} {archive.name} {digest} https://example.invalid/{archive.name}\n")
         (self.root / "sources.list").write_text("".join(manifest))
@@ -255,6 +265,31 @@ class DriverTests(unittest.TestCase):
         prefix = self.root / "build/x86_64-linux-musl"
         self.assertEqual(os.readlink(prefix / "libexec/clang"), "../host/bin/clang")
         self.assertTrue((prefix / "bin/x86_64-linux-musl-c++").exists())
+
+    def test_builtins_find_libunwind_headers_before_installation(self):
+        for arch in ("x86_64", "aarch64"):
+            for mode in ("system", "source"):
+                with self.subTest(arch=arch, mode=mode):
+                    name = arch + "-" + mode
+                    prefix = self.root / "build" / name
+                    work = self.root / "build/work" / name
+                    self.run_make("builtins", "ARCH=" + arch, "LLVM_MODE=" + mode,
+                                  "PREFIX=" + str(prefix), "BUILD_DIR=" + str(work),
+                                  "TARGET_CFLAGS=-Os")
+                    self.assertFalse((prefix / "sysroot/usr/include/unwind.h").exists())
+                    options = json.loads((work / "builtins/fixture-config.json").read_text())
+                    directories = [option.split("=", 1)[1] for option in options
+                                   if option.startswith("-DCMAKE_C_STANDARD_INCLUDE_DIRECTORIES=")]
+                    self.assertEqual(len(directories), 1)
+                    include = Path(directories[0])
+                    self.assertEqual(include, self.root / "build/src/llvm-test/libunwind/include")
+                    for line in (include / "unwind.h").read_text().splitlines():
+                        header = line.removeprefix("#include <").removesuffix(">")
+                        self.assertTrue((include / header).is_file(), header)
+                    flags = next(option for option in options if option.startswith("-DCMAKE_C_FLAGS="))
+                    self.assertIn("-Os", flags)
+                    self.assertIn("--gcc-toolchain=", flags)
+                    self.assertIn("-resource-dir=", flags)
 
     def test_source_patches_apply_once_in_order_and_are_installed(self):
         self.source_patch("10-second.patch", "first", "second")

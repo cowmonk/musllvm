@@ -14,7 +14,8 @@ For LLVM 23.1.3:
   Its context was updated for LLVM 23; the change matches Chimera's patch.
 * 0002 removes musl's large file macros before LLVM declares matching names.
 * 0011 builds the C exception personality with LLVM's unwind headers during
-  the compiler-rt bootstrap.
+  the compiler-rt bootstrap. The builtins configuration adds libunwind's
+  source include directory so unwind.h can find its nested headers.
 
 The Clang configuration and CMake settings cover Chimera's hardening,
 libatomic, library layout and typeinfo defaults. The build also uses
