@@ -41,8 +41,7 @@ jobs:
         arch: [x86_64, aarch64]
     env:
       ARCH: ${{ matrix.arch }}
-      LLVM_MODE: source
-      HOST_LDFLAGS: -static-libstdc++ -static-libgcc
+      LLVM_MODE: static
     steps:
       - uses: actions/checkout@v4
       - name: Install host dependencies
@@ -74,6 +73,10 @@ jobs:
           mkdir -p "$unpacked"
           mv "build/$target" "$RUNNER_TEMP/original-$target"
           tar -xJf "$archive" -C "$unpacked"
+          python3 scripts/package.py --check-host --prefix "$unpacked/musllvm-$target"
+          sudo chroot "$unpacked/musllvm-$target" /host/bin/clang --version
+          sudo chroot "$unpacked/musllvm-$target" /host/bin/ld.lld --version
+          sudo chroot "$unpacked/musllvm-$target" /host/bin/llvm-ar --version
           make verify PREFIX="$unpacked/musllvm-$target" \
             BUILD_DIR="$PWD/build/release-verify/$target" JOBS=2
       - uses: actions/upload-artifact@v4

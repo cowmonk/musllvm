@@ -12,9 +12,9 @@ downloads
 =========
 
 [Releases](https://github.com/cowmonk/musllvm/releases) provide archives
-for x86_64-linux-musl and aarch64-linux-musl. Both run on x86_64 Linux
-hosts with glibc 2.39 or newer. The compiler tools are included.
-Target programs use musl.
+for x86_64-linux-musl and aarch64-linux-musl. The compiler tools link
+musl statically and run on x86_64 Linux, including musl and glibc systems.
+Target programs use musl. The wrappers need a shell and the usual POSIX tools.
 
 Download an archive and SHA256SUMS from the same release, then check
 the archive you downloaded:
@@ -23,8 +23,8 @@ the archive you downloaded:
     tar -xJf musllvm-x86_64-linux-musl-host-x86_64-linux.tar.xz
     eval "$(musllvm-x86_64-linux-musl/bin/x86_64-linux-musl-env)"
 
-Each archive includes its source pins, patches, licenses and build information under
-share/musllvm/. pkg-config is optional and uses the host installation.
+Each archive includes its source pins, patches, licenses and build information
+under share/musllvm/. pkg-config is optional and uses the host installation.
 
 
 dependencies
@@ -33,7 +33,8 @@ dependencies
 Build on a Linux host with:
 
     clang/llvm    Clang 21 or newer, clang++, LLD, LLVM utilities and
-                  matching llvm-config and LLVM CMake metadata (system mode)
+                  matching llvm-config and LLVM CMake metadata (system mode
+                  or a static build using the system LLVM bootstrap)
     make          GNU make
     cmake         3.20 or newer
     ninja
@@ -68,7 +69,30 @@ To also build Clang, LLD and the LLVM utilities from source:
         PREFIX="$PWD/build/x86_64-source" BUILD_DIR="$PWD/build/work/x86_64-source"
 
 Source mode installs host tools under PREFIX/host. These tools use the
-host libc. Both modes produce a cross toolchain.
+host libc.
+
+For compiler tools that link musl, libc++, libc++abi, libunwind and
+compiler-rt statically:
+
+    make LLVM_MODE=static ARCH=x86_64 JOBS=2 LINK_JOBS=1 \
+        PREFIX="$PWD/build/x86_64-static" BUILD_DIR="$PWD/build/work/x86_64-static"
+
+Static mode first builds musl and the C++ runtimes for the build machine
+under BUILD_DIR/bootstrap/. It uses that toolchain to build the final LLVM
+tools, then builds the requested target's sysroot. The compiler runs on
+the build machine's architecture; ARCH selects the target architecture.
+The build checks every installed host executable for a dynamic loader
+and shared library dependencies.
+
+To start with a working GCC C++17 toolchain, including on a musl host:
+
+    make LLVM_MODE=static BOOTSTRAP_LLVM_MODE=source \
+        HOST_CC=gcc HOST_CXX=g++ ARCH=x86_64 JOBS=2 LINK_JOBS=1 \
+        PREFIX="$PWD/build/x86_64-static" BUILD_DIR="$PWD/build/work/x86_64-static"
+
+This also builds the initial LLVM tools from source. It takes longer than
+using an installed LLVM. Static host tools cannot load compiler plugins.
+The target sysroot still includes static and shared libraries.
 
 
 configuration
@@ -76,15 +100,16 @@ configuration
 
 Edit [config.mk](config.mk) or override settings through make.
 
-    ARCH             x86_64                 x86_64 or aarch64
-    TARGET           $(ARCH)-linux-musl     target triple
-    PREFIX           build/$(TARGET)        toolchain installation
-    BUILD_DIR        build/work/$(TARGET)   build files and completed stages
-    LLVM_MODE        system                 system or source
-    JOBS             2                      compilation jobs
-    LINK_JOBS        1                      parallel links when building LLVM
-    TARGET_CFLAGS    -O2                    target library flags
-    RUNNER                                  emulator executable (optional)
+    ARCH                x86_64                 x86_64 or aarch64
+    TARGET              $(ARCH)-linux-musl     target triple
+    PREFIX              build/$(TARGET)        toolchain installation
+    BUILD_DIR           build/work/$(TARGET)   build files and completed stages
+    LLVM_MODE           system                 system, source or static
+    BOOTSTRAP_LLVM_MODE system                 system or source (static mode)
+    JOBS                2                      compilation jobs
+    LINK_JOBS           1                      parallel links when building LLVM
+    TARGET_CFLAGS       -O2                    target library flags
+    RUNNER                                     emulator executable (optional)
 
 Each target has its own prefix and work directory. Downloaded and
 extracted sources are shared. Build paths must have no whitespace or
@@ -167,14 +192,14 @@ no compilation or downloads.
 
 A completed build also runs make verify. This compiles static, static-pie
 and dynamic C and C++ programs, directly and through the CMake toolchain
-file, and checks their ELF architecture and runtime dependencies. It also
+file, and checks ELF architecture and runtime dependencies. It also
 compiles with -Werror. Programs run when the host architecture matches the
 target or RUNNER names an emulator.
 
     make verify ARCH=aarch64 RUNNER=qemu-aarch64
 
 [CI](.github/workflows/ci.yml) runs offline tests and both target builds.
-A manual workflow run can build both targets with LLVM from source instead.
+A manual workflow run can select source or static LLVM builds for both targets.
 
 
 publishing
@@ -186,17 +211,21 @@ or the compiler smoke tests. This covers source version updates
 and new core components added to the build. README edits do not publish
 a release. The workflow can also be run manually from main.
 
-Both targets build with LLVM_MODE=source. Each archive is unpacked into
-a new location and tested before upload. The release is published after
-both builds pass, with SHA256SUMS and sources.list attached.
+Both targets build with LLVM_MODE=static. Each archive is unpacked into
+a new location and tested before upload. CI checks the host ELF files and
+starts Clang, LLD and llvm-ar in a chroot containing only the toolchain.
+The release is published after both builds pass, with SHA256SUMS and
+sources.list attached.
 Tags use musllvm-YYYY-MM-DD-COMMIT, with the first 12 commit characters.
 Rerunning a published commit keeps its release assets.
 
-To package a completed source build yourself:
+To package a completed static build yourself:
 
-    make package LLVM_MODE=source ARCH=x86_64
+    make package LLVM_MODE=static ARCH=x86_64 \
+        PREFIX="$PWD/build/x86_64-static" BUILD_DIR="$PWD/build/work/x86_64-static"
 
 Archives go to build/releases/. Set DIST_DIR to change the output directory.
+LLVM_MODE=source also supports packaging, with the build host's libc requirements.
 
 
 credits

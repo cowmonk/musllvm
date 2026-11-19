@@ -12,7 +12,9 @@ doctor()
 	done
 	need "$HOST_CC"
 	need "$HOST_CXX"
-	if [ "$LLVM_MODE" = system ]; then
+	doctor_mode=$LLVM_MODE
+	[ "$LLVM_MODE" != static ] || doctor_mode=$BOOTSTRAP_LLVM_MODE
+	if [ "$doctor_mode" = system ]; then
 		"$HOST_CC" --version | head -n 1 | awk '/clang/ { found=1 } END { exit !found }' ||
 			die "LLVM_MODE=system requires Clang; set HOST_CC=clang"
 		clang_major=$("$HOST_CC" -dumpversion)
@@ -27,18 +29,53 @@ doctor()
 
 configure_llvm()
 {
+	llvm_cc=$BOOTSTRAP_CC
+	llvm_cxx=$BOOTSTRAP_CXX
+	llvm_ldflags=$HOST_LDFLAGS
+	set --
+	if [ "$LLVM_MODE" = static ]; then
+		bootstrap_prefix="$BUILD_DIR/bootstrap/prefix"
+		(
+			ARCH=$HOST_ARCH TARGET="$HOST_ARCH-linux-musl" \
+				PREFIX="$bootstrap_prefix" BUILD_DIR="$BUILD_DIR/bootstrap/work" \
+				LLVM_MODE="$BOOTSTRAP_LLVM_MODE" TARGET_CFLAGS=-O2 RUNNER= \
+				sh "$PROOT/scripts/build.sh" runtimes
+		)
+		llvm_cc="$bootstrap_prefix/bin/$HOST_ARCH-linux-musl-cc"
+		llvm_cxx="$bootstrap_prefix/bin/$HOST_ARCH-linux-musl-c++"
+		llvm_ldflags="$HOST_LDFLAGS -static"
+		set -- -DCMAKE_SYSROOT="$bootstrap_prefix/sysroot" \
+			-DCMAKE_FIND_ROOT_PATH="$bootstrap_prefix/sysroot" \
+			-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
+			-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
+			-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
+			-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY \
+			-DCMAKE_AR="$bootstrap_prefix/bin/$HOST_ARCH-linux-musl-ar" \
+			-DCMAKE_RANLIB="$bootstrap_prefix/bin/$HOST_ARCH-linux-musl-ranlib" \
+			-DCMAKE_NM="$bootstrap_prefix/bin/$HOST_ARCH-linux-musl-nm" \
+			-DCMAKE_LINKER="$bootstrap_prefix/libexec/ld.lld" \
+			-DLLVM_HOST_TRIPLE="$HOST_ARCH-linux-musl" \
+			-DLLVM_DEFAULT_TARGET_TRIPLE="$HOST_ARCH-linux-musl" \
+			-DBUILD_SHARED_LIBS=OFF -DLLVM_BUILD_LLVM_DYLIB=OFF \
+			-DLLVM_LINK_LLVM_DYLIB=OFF -DCLANG_LINK_CLANG_DYLIB=OFF \
+			-DLLVM_ENABLE_LIBCXX=ON -DLLVM_ENABLE_PLUGINS=OFF \
+			-DLLVM_EXPORT_SYMBOLS_FOR_PLUGINS=OFF -DCLANG_PLUGIN_SUPPORT=OFF \
+			-DLLVM_ENABLE_BACKTRACES=OFF -DLLVM_ENABLE_LIBPFM=OFF \
+			-DLLVM_ENABLE_CURL=OFF -DLLVM_ENABLE_HTTPLIB=OFF -DLLVM_ENABLE_FFI=OFF \
+			-DDEFAULT_SYSROOT=
+	fi
 	cmake -S "$LLVM_SOURCE/llvm" -B "$BUILD_DIR/llvm" -G Ninja \
 		-DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PREFIX/host" \
-		-DCMAKE_C_COMPILER="$BOOTSTRAP_CC" -DCMAKE_CXX_COMPILER="$BOOTSTRAP_CXX" \
+		-DCMAKE_C_COMPILER="$llvm_cc" -DCMAKE_CXX_COMPILER="$llvm_cxx" \
 		-DCMAKE_C_FLAGS="$HOST_CFLAGS" -DCMAKE_CXX_FLAGS="$HOST_CXXFLAGS" \
-		-DCMAKE_EXE_LINKER_FLAGS="$HOST_LDFLAGS" \
+		-DCMAKE_EXE_LINKER_FLAGS="$llvm_ldflags" \
 		-DLLVM_ENABLE_PROJECTS='clang;lld' -DLLVM_TARGETS_TO_BUILD='X86;AArch64' \
 		-DLLVM_DISTRIBUTION_COMPONENTS='clang;clang-resource-headers;lld;llvm-ar;llvm-ranlib;llvm-nm;llvm-objcopy;llvm-objdump;llvm-readelf;llvm-strip;llvm-size;llvm-strings;llvm-addr2line;llvm-cxxfilt' \
 		-DLLVM_PARALLEL_LINK_JOBS="$LINK_JOBS" -DLLVM_ENABLE_ASSERTIONS=OFF \
 		-DLLVM_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_BENCHMARKS=OFF \
 		-DLLVM_INCLUDE_EXAMPLES=OFF -DLLVM_ENABLE_BINDINGS=OFF \
 		-DLLVM_ENABLE_ZLIB=OFF -DLLVM_ENABLE_ZSTD=OFF -DLLVM_ENABLE_LIBXML2=OFF \
-		-DLLVM_ENABLE_LIBEDIT=OFF -DCLANG_ENABLE_ARCMT=OFF -DCLANG_ENABLE_STATIC_ANALYZER=OFF
+		-DLLVM_ENABLE_LIBEDIT=OFF -DCLANG_ENABLE_ARCMT=OFF -DCLANG_ENABLE_STATIC_ANALYZER=OFF "$@"
 }
 
 done_stage()
@@ -53,11 +90,14 @@ mark_stage()
 
 toolchain()
 {
-	if [ "$LLVM_MODE" = source ]; then
+	if [ "$LLVM_MODE" != system ]; then
 		if ! done_stage llvm; then
 			configure_llvm
 			cmake --build "$BUILD_DIR/llvm" --parallel "$JOBS" --target distribution
 			cmake --build "$BUILD_DIR/llvm" --target install-distribution
+			if [ "$LLVM_MODE" = static ]; then
+				python3 "$PROOT/scripts/package.py" --check-host --prefix "$PREFIX"
+			fi
 			mark_stage llvm
 		fi
 		HOST_CLANG="$PREFIX/host/bin/clang"
@@ -78,7 +118,7 @@ toolchain()
 	RESOURCE_DIR="$PREFIX/lib/clang/$RESOURCE_VERSION"
 	mkdir -p "$PREFIX/libexec" "$RESOURCE_DIR/lib/linux" "$SYSROOT/usr/lib" "$BUILD_DIR/empty-gcc"
 	for program in $TOOLS; do
-		if [ "$LLVM_MODE" = source ]; then
+		if [ "$LLVM_MODE" != system ]; then
 			tool_path="../host/bin/$program"
 		else
 			case "$program" in
@@ -242,6 +282,7 @@ wrappers()
 	sed -e "s/@TARGET@/$TARGET/g" -e "s/@RESOURCE_VERSION@/$RESOURCE_VERSION/g" \
 		"$PROOT/files/toolchain/clang.cfg" > "$PREFIX/share/musllvm/clang.cfg"
 	printf '%s\n' "$RESOURCE_VERSION" > "$PREFIX/share/musllvm/resource-version"
+	printf '%s\n' "$LLVM_MODE" > "$PREFIX/share/musllvm/llvm-mode"
 	if [ -d "$PROOT/patches" ]; then
 		cp -R "$PROOT/patches" "$PREFIX/share/musllvm/"
 	fi
@@ -251,8 +292,8 @@ wrappers()
 stage=${1:-all}
 case "$stage" in
 config)
-	printf 'ARCH=%s\nTARGET=%s\nLLVM_MODE=%s\nPREFIX=%s\nSYSROOT=%s\nBUILD_DIR=%s\nJOBS=%s\n' \
-		"$ARCH" "$TARGET" "$LLVM_MODE" "$PREFIX" "$SYSROOT" "$BUILD_DIR" "$JOBS"
+	printf 'ARCH=%s\nTARGET=%s\nLLVM_MODE=%s\nPREFIX=%s\nSYSROOT=%s\nBUILD_DIR=%s\nJOBS=%s\nBOOTSTRAP_LLVM_MODE=%s\nHOST_ARCH=%s\n' \
+		"$ARCH" "$TARGET" "$LLVM_MODE" "$PREFIX" "$SYSROOT" "$BUILD_DIR" "$JOBS" "$BOOTSTRAP_LLVM_MODE" "$HOST_ARCH"
 	exit ;;
 doctor) doctor; exit ;;
 clean)
@@ -267,7 +308,7 @@ esac
 
 doctor
 unset CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH OBJC_INCLUDE_PATH LIBRARY_PATH
-unset GCC_EXEC_PREFIX COMPILER_PATH CFLAGS CXXFLAGS CPPFLAGS LDFLAGS
+unset GCC_EXEC_PREFIX COMPILER_PATH CFLAGS CXXFLAGS CPPFLAGS LDFLAGS MUSLLVM_SYSROOT
 BOOTSTRAP_CC=$(absolute_path "$(command -v "$HOST_CC")")
 BOOTSTRAP_CXX=$(absolute_path "$(command -v "$HOST_CXX")")
 sh "$PROOT/scripts/check.sh" pull
@@ -282,7 +323,8 @@ ATOMIC_SOURCE=$source_path
 
 config_digest=$({
 	printf '%s\n' "$ARCH" "$TARGET" "$LLVM_MODE" "$PREFIX" "$BUILD_DIR" \
-		"$BOOTSTRAP_CC" "$BOOTSTRAP_CXX" "$TARGET_CFLAGS" "$HOST_CFLAGS" "$HOST_CXXFLAGS" "$HOST_LDFLAGS"
+		"$BOOTSTRAP_CC" "$BOOTSTRAP_CXX" "$TARGET_CFLAGS" "$HOST_CFLAGS" "$HOST_CXXFLAGS" "$HOST_LDFLAGS" \
+		"$BOOTSTRAP_LLVM_MODE" "$HOST_ARCH"
 	"$BOOTSTRAP_CC" --version
 	"$BOOTSTRAP_CXX" --version
 	cat "$SOURCES_FILE"

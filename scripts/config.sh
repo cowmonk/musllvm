@@ -119,9 +119,22 @@ case "$TARGET" in
 esac
 LLVM_MODE=${LLVM_MODE:-system}
 case "$LLVM_MODE" in
-system|source) ;;
-*) die "LLVM_MODE must be system or source" ;;
+system|source|static) ;;
+*) die "LLVM_MODE must be system, source or static" ;;
 esac
+BOOTSTRAP_LLVM_MODE=${BOOTSTRAP_LLVM_MODE:-system}
+case "$BOOTSTRAP_LLVM_MODE" in
+system|source) ;;
+*) die "BOOTSTRAP_LLVM_MODE must be system or source" ;;
+esac
+HOST_ARCH=$(uname -m)
+if [ "$LLVM_MODE" = static ]; then
+	[ "$(uname -s)" = Linux ] || die "static LLVM requires a Linux build host"
+	case "$HOST_ARCH" in
+	x86_64|aarch64) ;;
+	*) die "unsupported static LLVM host: $HOST_ARCH" ;;
+	esac
+fi
 JOBS=${JOBS:-2}
 LINK_JOBS=${LINK_JOBS:-1}
 for jobs in "$JOBS" "$LINK_JOBS"; do
@@ -155,4 +168,5 @@ HOST_CXXFLAGS=${HOST_CXXFLAGS:-}
 HOST_LDFLAGS=${HOST_LDFLAGS:-}
 RUNNER=${RUNNER:-}
 export PROOT ARCH TARGET PREFIX BUILD_DIR SOURCES_DIR SOURCES_FILE LLVM_MODE JOBS LINK_JOBS
+export BOOTSTRAP_LLVM_MODE HOST_ARCH
 export HOST_CC HOST_CXX TARGET_CFLAGS HOST_CFLAGS HOST_CXXFLAGS HOST_LDFLAGS RUNNER

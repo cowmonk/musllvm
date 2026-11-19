@@ -5,10 +5,11 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
-      source_llvm:
-        description: Also build LLVM host tools from source
-        type: boolean
-        default: false
+      llvm_mode:
+        description: LLVM host tool build
+        type: choice
+        options: [system, source, static]
+        default: system
 
 permissions:
   contents: read
@@ -22,14 +23,14 @@ jobs:
 
   cross:
     runs-on: ubuntu-24.04
-    timeout-minutes: ${{ inputs.source_llvm && 360 || 90 }}
+    timeout-minutes: ${{ inputs.llvm_mode && inputs.llvm_mode != 'system' && 360 || 90 }}
     strategy:
       fail-fast: false
       matrix:
         arch: [x86_64, aarch64]
     env:
       ARCH: ${{ matrix.arch }}
-      LLVM_MODE: ${{ inputs.source_llvm && 'source' || 'system' }}
+      LLVM_MODE: ${{ inputs.llvm_mode || 'system' }}
     steps:
       - uses: actions/checkout@v4
       - name: Install host dependencies

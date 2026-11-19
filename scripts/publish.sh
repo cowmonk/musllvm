@@ -31,7 +31,7 @@ sha256sum -c SHA256SUMS
 cp "$root/sources.list" sources.list
 {
 	printf 'CI built these musllvm toolchains from commit %s.\n\n' "$GITHUB_SHA"
-	printf '%s\n' 'The tools run on x86_64 Linux with glibc 2.39 or newer.' \
+	printf '%s\n' 'The compiler tools link musl statically and run on x86_64 Linux.' \
 		'They target x86_64-linux-musl and aarch64-linux-musl.' \
 		'The archives include Clang, LLD and LLVM utilities.' '' 'core sources' '------------' ''
 	awk 'NF && $1 !~ /^#/ { printf "    %s  %s\n", $1, $2 }' sources.list

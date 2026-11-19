@@ -1,6 +1,7 @@
 include config.mk
 
 export ARCH TARGET PREFIX BUILD_DIR SOURCES_DIR SOURCES_FILE LLVM_MODE JOBS LINK_JOBS
+export BOOTSTRAP_LLVM_MODE
 export HOST_CC HOST_CXX TARGET_CFLAGS HOST_CFLAGS HOST_CXXFLAGS HOST_LDFLAGS RUNNER
 
 all: build
@@ -37,14 +38,14 @@ clean:
 
 help:
 	@printf '%s\n' \
-	  'make [ARCH=x86_64|aarch64] [LLVM_MODE=system|source] [JOBS=2]' \
+	  'make [ARCH=x86_64|aarch64] [LLVM_MODE=system|source|static] [JOBS=2]' \
 	  '  build           build and verify the complete cross toolchain (default)' \
 	  '  doctor          check host dependencies' \
 	  '  show-config     print paths and target configuration' \
 	  '  pull            download and verify pinned source archives' \
 	  '  verify-sources  check downloaded archives without network access' \
 	  '  verify          compile, inspect, and optionally run C and C++ programs' \
-	  '  package         archive a completed LLVM_MODE=source toolchain' \
+	  '  package         archive a completed source or static toolchain' \
 	  '  check           run offline build-driver tests' \
 	  '  clean           remove the selected toolchain and its work directory' \
 	  '  configure-llvm  configure the optional LLVM source build'

@@ -3,6 +3,7 @@ import io
 import json
 import os
 from pathlib import Path
+import platform
 import shutil
 import subprocess
 import tarfile
@@ -23,17 +24,18 @@ import sys
 name = Path(sys.argv[0]).name
 args = sys.argv[1:]
 with open(os.environ["FAKE_LOG"], "a") as log:
-    log.write(json.dumps({"tool": name, "args": args}) + "\n")
+    log.write(json.dumps({"tool": name, "args": args,
+                          "sysroot": os.environ.get("MUSLLVM_SYSROOT")}) + "\n")
 
 def write(path, value="fixture"):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(value)
 
-if name in ("clang", "clang++"):
+if name in ("clang", "clang++", "gcc", "g++"):
     version = os.environ.get("FAKE_CLANG_VERSION", "21.1.8")
     if "--version" in args:
-        print("clang version " + version + " (fixture)")
+        print(("clang" if name.startswith("clang") else "gcc") + " version " + version + " (fixture)")
     elif "-dumpversion" in args:
         print(version)
     elif "-print-resource-dir" in args:
@@ -156,7 +158,7 @@ class DriverTests(unittest.TestCase):
             manifest.append(f"{component} {archive.name} {digest} https://example.invalid/{archive.name}\n")
         (self.root / "sources.list").write_text("".join(manifest))
         self.env = os.environ.copy()
-        for key in ("ARCH", "TARGET", "PREFIX", "BUILD_DIR", "SOURCES_DIR", "SOURCES_FILE", "LLVM_MODE", "JOBS", "LINK_JOBS", "HOST_CC", "HOST_CXX", "TARGET_CFLAGS", "HOST_CFLAGS", "HOST_CXXFLAGS", "HOST_LDFLAGS", "RUNNER", "MAKEFLAGS", "MFLAGS", "MUSLLVM_SYSROOT"):
+        for key in ("ARCH", "TARGET", "PREFIX", "BUILD_DIR", "SOURCES_DIR", "SOURCES_FILE", "LLVM_MODE", "BOOTSTRAP_LLVM_MODE", "JOBS", "LINK_JOBS", "HOST_CC", "HOST_CXX", "TARGET_CFLAGS", "HOST_CFLAGS", "HOST_CXXFLAGS", "HOST_LDFLAGS", "RUNNER", "MAKEFLAGS", "MFLAGS", "MUSLLVM_SYSROOT"):
             self.env.pop(key, None)
         self.env.update({
             "PATH": str(self.tools) + os.pathsep + os.environ["PATH"],
@@ -189,6 +191,15 @@ class DriverTests(unittest.TestCase):
                         "\n\\ No newline at end of file\n+" + after + "\n\\ No newline at end of file\n")
         return path
 
+    def mock_host_check(self):
+        (self.root / "scripts/package.py").write_text('''import json
+import os
+import sys
+with open(os.environ["FAKE_LOG"], "a") as stream:
+    stream.write(json.dumps({"tool": "check-host", "args": sys.argv[1:]}) + "\\n")
+sys.exit(1 if os.environ.get("FAKE_STATIC_FAIL") else 0)
+''')
+
     def install_wrapper(self, name, template, prefix=None):
         prefix = prefix or Path(self.temporary.name) / "relocated tools' path"
         (prefix / "bin").mkdir(parents=True, exist_ok=True)
@@ -215,6 +226,64 @@ class DriverTests(unittest.TestCase):
             with self.subTest(arguments=arguments):
                 self.run_make("show-config", *arguments, success=False)
         self.assertFalse((self.root / "build").exists())
+
+    def test_invalid_static_bootstrap_mode_fails_before_work(self):
+        self.run_make("show-config", "LLVM_MODE=static", "BOOTSTRAP_LLVM_MODE=static", success=False)
+        self.assertFalse((self.root / "build").exists())
+
+    def test_static_host_bootstrap_uses_the_native_architecture(self):
+        self.mock_host_check()
+        native = platform.machine()
+        target = "aarch64" if native == "x86_64" else "x86_64"
+        self.run_make("runtimes", "LLVM_MODE=static", "ARCH=" + target, "TARGET_CFLAGS=-Os",
+                      env={**self.env, "MUSLLVM_SYSROOT": "/wrong/target/sysroot"})
+        prefix = self.root / "build" / (target + "-linux-musl")
+        work = self.root / "build/work" / (target + "-linux-musl")
+        bootstrap = work / "bootstrap/prefix"
+        options = json.loads((work / "llvm/fixture-config.json").read_text())
+        self.assertIn("-DCMAKE_C_COMPILER=" + str(bootstrap / "bin" / (native + "-linux-musl-cc")), options)
+        self.assertIn("-DCMAKE_SYSROOT=" + str(bootstrap / "sysroot"), options)
+        self.assertIn("-DLLVM_HOST_TRIPLE=" + native + "-linux-musl", options)
+        self.assertIn("-DBUILD_SHARED_LIBS=OFF", options)
+        self.assertIn("-DLLVM_LINK_LLVM_DYLIB=OFF", options)
+        self.assertIn("-DLLVM_ENABLE_PLUGINS=OFF", options)
+        self.assertIn("-static", next(value for value in options if value.startswith("-DCMAKE_EXE_LINKER_FLAGS=")))
+        native_options = json.loads((work / "bootstrap/work/runtimes/fixture-config.json").read_text())
+        self.assertIn("-DCMAKE_C_COMPILER_TARGET=" + native + "-linux-musl", native_options)
+        self.assertNotIn("-Os", next(value for value in native_options if value.startswith("-DCMAKE_C_FLAGS=")))
+        target_options = json.loads((work / "runtimes/fixture-config.json").read_text())
+        self.assertIn("-DCMAKE_C_COMPILER_TARGET=" + target + "-linux-musl", target_options)
+        self.assertEqual((prefix / "share/musllvm/llvm-mode").read_text(), "static\n")
+        self.assertTrue(any(item["tool"] == "check-host" for item in self.commands()))
+        self.assertEqual(os.readlink(prefix / "libexec/clang"), "../host/bin/clang")
+        self.assertTrue(all(item["sysroot"] is None for item in self.commands() if item["tool"] == "cmake"))
+        count = sum(item["tool"] == "cmake" for item in self.commands())
+        self.run_make("runtimes", "LLVM_MODE=static", "ARCH=" + target, "TARGET_CFLAGS=-Os")
+        self.assertEqual(sum(item["tool"] == "cmake" for item in self.commands()), count)
+        self.run_make("runtimes", "LLVM_MODE=static", "ARCH=" + target, "TARGET_CFLAGS=-Os",
+                      "BOOTSTRAP_LLVM_MODE=source", success=False)
+
+    def test_static_host_can_bootstrap_llvm_with_gcc(self):
+        self.mock_host_check()
+        for tool in ("gcc", "g++"):
+            (self.tools / tool).symlink_to(self.fake)
+        self.run_make("toolchain", "LLVM_MODE=static", "BOOTSTRAP_LLVM_MODE=source", "HOST_CC=gcc", "HOST_CXX=g++")
+        work = self.root / "build/work/x86_64-linux-musl"
+        options = json.loads((work / "bootstrap/work/llvm/fixture-config.json").read_text())
+        self.assertIn("-DCMAKE_C_COMPILER=" + str(self.tools / "gcc"), options)
+        self.assertIn("-DCMAKE_CXX_COMPILER=" + str(self.tools / "g++"), options)
+        self.assertTrue((work / "stamps/llvm").exists())
+
+    def test_failed_static_host_check_prevents_target_build(self):
+        self.mock_host_check()
+        self.run_make("runtimes", "LLVM_MODE=static", success=False,
+                      env={**self.env, "FAKE_STATIC_FAIL": "1"})
+        work = self.root / "build/work/x86_64-linux-musl"
+        self.assertTrue((work / "bootstrap/work/stamps/runtimes").exists())
+        self.assertFalse((work / "stamps/llvm").exists())
+        self.assertFalse((work / "stamps/headers").exists())
+        self.run_make("runtimes", "LLVM_MODE=static")
+        self.assertTrue((work / "stamps/runtimes").exists())
 
     def test_old_system_clang_is_rejected_before_fetch(self):
         result = self.run_make("runtimes", success=False,

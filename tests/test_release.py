@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import platform
 import shutil
+import struct
 import subprocess
 import tarfile
 import tempfile
@@ -49,6 +50,77 @@ else:
 '''
 
 
+def host_elf(arch="x86_64", pie=False, interpreter=False, needed=False):
+    count = 1 + interpreter + (pie or needed)
+    start = 64 + 56 * count
+    payload = b"\x90"
+    segments = []
+    if interpreter:
+        loader = b"/lib/fixture-loader.so\0"
+        segments.append((3, start + len(payload), len(loader)))
+        payload += loader
+    if pie or needed:
+        dynamic = struct.pack("<qQ", 1 if needed else 0x6ffffffb, 1)
+        dynamic += struct.pack("<qQ", 0, 0)
+        segments.append((2, start + len(payload), len(dynamic)))
+        payload += dynamic
+    size = start + len(payload)
+    header = b"\x7fELF\x02\x01\x01" + b"\0" * 9
+    header += struct.pack("<HHIQQQIHHHHHH", 3 if pie else 2,
+                          {"x86_64": 62, "aarch64": 183}[arch], 1, 0x400000 + start,
+                          64, 0, 0, 64, 56, count, 0, 0, 0)
+    program = struct.pack("<IIQQQQQQ", 1, 5, 0, 0x400000, 0x400000, size, size, 4096)
+    for kind, offset, length in segments:
+        program += struct.pack("<IIQQQQQQ", kind, 4, offset, 0x400000 + offset, 0,
+                               length, length, 8)
+    return header + program + payload
+
+
+class StaticHostTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix="musllvm-static-test-")
+        self.addCleanup(self.temporary.cleanup)
+        self.path = Path(self.temporary.name) / "clang"
+
+    def test_static_executables_and_static_pie_for_both_hosts(self):
+        for arch in ("x86_64", "aarch64"):
+            for pie in (False, True):
+                with self.subTest(arch=arch, pie=pie):
+                    self.path.write_bytes(host_elf(arch, pie=pie))
+                    PACKAGE.check_static_elf(self.path, arch)
+
+    def test_dynamic_loader_is_rejected_without_a_needed_entry(self):
+        self.path.write_bytes(host_elf(interpreter=True))
+        with self.assertRaisesRegex(ValueError, "dynamic loader"):
+            PACKAGE.check_static_elf(self.path, "x86_64")
+
+    def test_needed_library_is_rejected_without_a_loader(self):
+        self.path.write_bytes(host_elf(pie=True, needed=True))
+        with self.assertRaisesRegex(ValueError, "shared library"):
+            PACKAGE.check_static_elf(self.path, "x86_64")
+
+    def test_wrong_host_and_malformed_elf_are_rejected(self):
+        valid = host_elf()
+        for content in (b"#!/bin/sh\n", valid[:40], valid[:80],
+                        valid[:5] + b"\x02" + valid[6:],
+                        valid[:16] + struct.pack("<H", 1) + valid[18:]):
+            with self.subTest(content=content[:20]):
+                self.path.write_bytes(content)
+                with self.assertRaises(ValueError):
+                    PACKAGE.check_static_elf(self.path, "x86_64")
+        self.path.write_bytes(host_elf("aarch64"))
+        with self.assertRaisesRegex(ValueError, "architecture"):
+            PACKAGE.check_static_elf(self.path, "x86_64")
+
+    def test_truncated_or_unterminated_dynamic_section_is_rejected(self):
+        content = host_elf(pie=True)
+        for invalid in (content[:-1], content[:-16] + struct.pack("<qQ", 21, 0)):
+            with self.subTest(length=len(invalid)):
+                self.path.write_bytes(invalid)
+                with self.assertRaises(ValueError):
+                    PACKAGE.check_static_elf(self.path, "x86_64")
+
+
 class PackageTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="musllvm-package-test-")
@@ -76,8 +148,58 @@ class PackageTests(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(relative + "\n")
 
-    def package(self, target=None):
-        return PACKAGE.package(self.prefix, target or self.target, self.sources, self.output, self.source_root)
+    def package(self, target=None, mode="source"):
+        return PACKAGE.package(self.prefix, target or self.target, self.sources, self.output,
+                               self.source_root, llvm_mode=mode)
+
+    def install_static_host(self):
+        for name in ("clang", "clang++", "ld.lld", "llvm-ar", "llvm-readelf"):
+            path = self.prefix / "host/bin" / name
+            path.write_bytes(host_elf(platform.machine()))
+            path.chmod(0o755)
+        (self.prefix / "share/musllvm/llvm-mode").write_text("static\n")
+
+    def test_static_cross_package_records_the_compiler_host_runtime(self):
+        self.install_static_host()
+        target = "aarch64-linux-musl" if platform.machine() == "x86_64" else "x86_64-linux-musl"
+        (self.prefix / "bin" / (target + "-cc")).write_text("fixture\n")
+        with patch.object(PACKAGE.platform, "libc_ver", return_value=("glibc", "2.39")):
+            archive = self.package(target, mode="static")
+        with tarfile.open(archive) as stream:
+            metadata = json.load(stream.extractfile("musllvm-" + target + "/share/musllvm/build-info.json"))
+        self.assertEqual(metadata["llvm_mode"], "static")
+        self.assertEqual(metadata["host"], platform.machine() + "-linux")
+        self.assertEqual(metadata["host_libc"], {"name": "musl"})
+        self.assertEqual(metadata["host_linkage"], "static")
+        self.assertEqual(metadata["build_host_libc"], {"name": "glibc", "version": "2.39"})
+
+    def test_static_packaging_checks_every_host_executable(self):
+        self.install_static_host()
+        extra = self.prefix / "host/bin/llvm-extra"
+        extra.write_bytes(host_elf(platform.machine(), needed=True))
+        extra.chmod(0o755)
+        with self.assertRaisesRegex(ValueError, "shared library"):
+            self.package(mode="static")
+        self.assertFalse(self.output.exists())
+
+    def test_packaging_rejects_a_missing_or_wrong_build_mode(self):
+        self.install_static_host()
+        with self.assertRaisesRegex(ValueError, "does not match"):
+            self.package()
+        (self.prefix / "share/musllvm/llvm-mode").unlink()
+        with self.assertRaisesRegex(ValueError, "marker is missing"):
+            self.package(mode="static")
+
+    def test_static_host_requires_bundled_executable_tools(self):
+        self.install_static_host()
+        path = self.prefix / "host/bin/llvm-ar"
+        path.chmod(0o644)
+        with self.assertRaisesRegex(ValueError, "not executable"):
+            self.package(mode="static")
+        path.unlink()
+        path.symlink_to("/bin/sh")
+        with self.assertRaisesRegex(ValueError, "outside"):
+            self.package(mode="static")
 
     def test_archive_preserves_links_modes_and_source_metadata(self):
         archive = self.package()

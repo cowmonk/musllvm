@@ -6,6 +6,7 @@ SOURCES_DIR ?= $(CURDIR)/sources
 SOURCES_FILE ?= $(CURDIR)/sources.list
 
 LLVM_MODE ?= system
+BOOTSTRAP_LLVM_MODE ?= system
 JOBS ?= 2
 LINK_JOBS ?= 1
 HOST_CC ?= clang
